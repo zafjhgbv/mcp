@@ -1,0 +1,296 @@
+app:
+  description: '集成深度研究功能的MCP智能助手，支持网页抓取、深度研究报告生成等多种功能'
+  icon: 🔍
+  icon_background: '#E3F2FD'
+  mode: advanced-chat
+  name: 深度研究助手
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.1.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      - .PDF
+      - .TXT
+      - .MD
+      allowed_file_types:
+      - image
+      - document
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: true
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: true
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 5
+    opening_statement: '您好！我是深度研究助手🔍。我可以帮助您：
+
+1. 📝 **深度研究报告** - 基于任何主题生成详细的研究报告
+2. 🌐 **网页内容抓取** - 智能提取网页核心内容和链接
+3. 👋 **问候服务** - 简单的问候和交互
+
+请告诉我您想要研究的主题，或者需要抓取的网页URL！'
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+    - '帮我研究一下人工智能在医疗领域的最新应用'
+    - '分析一下区块链技术的发展趋势'
+    - '抓取这个网页的主要内容：https://example.com'
+    - '生成关于机器学习算法的深度研究报告'
+    - '你好，我是用户小明'
+    suggested_questions_after_answer:
+      enabled: true
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInLoop: false
+        sourceType: start
+        targetType: agent
+      id: 1742957989303-source-1742957995972-target
+      source: '1742957989303'
+      sourceHandle: source
+      target: '1742957995972'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: agent
+        targetType: answer
+      id: 1742957995972-source-answer-target
+      source: '1742957995972'
+      sourceHandle: source
+      target: answer
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: ''
+        selected: false
+        title: 开始
+        type: start
+        variables: []
+      height: 54
+      id: '1742957989303'
+      position:
+        x: 77.26818344276029
+        y: -75.86796899840161
+      positionAbsolute:
+        x: 77.26818344276029
+        y: -75.86796899840161
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        agent_parameters:
+          instruction:
+            type: constant
+            value: |
+              你是一个专业的深度研究助手。你已经连接到一个MCP服务器，拥有以下三个强大的工具：
+
+              ## 可用工具：
+
+              ### 1. deep_research 工具
+              **功能：** 执行深度研究，生成基于多维度搜索的详细研究报告
+              **参数：**
+              - search_content (必需): 研究主题描述
+              - search_broadness (可选): 搜索广度，控制关键词数量 (5-20，默认10)
+              - search_urls (可选): 额外的URL内容源列表
+              - filter_urls (可选): 用于筛选搜索结果的域名列表
+
+              **使用场景：** 当用户要求研究某个主题、分析趋势、生成报告时使用
+
+              ### 2. fetch_web_content 工具  
+              **功能：** 从指定URL抓取网页内容，智能提取正文和链接
+              **参数：**
+              - url (必需): 要抓取的网页URL，必须以 http:// 或 https:// 开头
+              - proxy_port (可选): 代理服务器端口号
+
+              **使用场景：** 当用户提供URL或要求抓取网页内容时使用
+
+              ### 3. hello 工具
+              **功能：** 简单的问候和交互测试
+              **参数：**
+              - name (必需): 用户的姓名
+
+              **使用场景：** 当用户要求问候或需要测试连接时使用
+
+              ## 使用指导原则：
+              1. 仔细分析用户请求，选择最合适的工具
+              2. 对于研究类请求，优先使用 deep_research 工具，可以根据需要调整 search_broadness
+              3. 对于URL相关请求，使用 fetch_web_content 工具
+              4. 始终根据用户的具体需求调整参数
+              5. 提供专业、详细的分析和总结
+
+              现在请根据用户的请求，智能选择并调用相应的工具。
+          mcp_server:
+            type: constant
+            value: http://127.0.0.1:8000/sse/
+          model:
+            type: constant
+            value:
+              completion_params: {}
+              mode: chat
+              model: gpt-4o
+              model_type: llm
+              provider: langgenius/openai/openai
+              type: model-selector
+          query:
+            type: constant
+            value: '{{#sys.query#}}'
+          tools:
+            type: constant
+            value:
+            # 内置时间工具
+            - enabled: true
+              extra:
+                description: '获取当前时间，支持多种时区和格式'
+              parameters: {}
+              provider_name: time
+              schemas:
+              - auto_generate: null
+                default: '%Y-%m-%d %H:%M:%S'
+                form: form
+                human_description:
+                  en_US: Time format in strftime standard.
+                  zh_Hans: strftime 标准的时间格式。
+                label:
+                  en_US: Format
+                  zh_Hans: 格式
+                llm_description: null
+                max: null
+                min: null
+                name: format
+                options: []
+                placeholder: null
+                precision: null
+                required: false
+                scope: null
+                template: null
+                type: string
+              - auto_generate: null
+                default: Asia/Shanghai
+                form: form
+                human_description:
+                  en_US: Timezone
+                  zh_Hans: 时区
+                label:
+                  en_US: Timezone
+                  zh_Hans: 时区
+                llm_description: null
+                max: null
+                min: null
+                name: timezone
+                options:
+                - label:
+                    en_US: UTC
+                    zh_Hans: UTC
+                  value: UTC
+                - label:
+                    en_US: Asia/Shanghai
+                    zh_Hans: 亚洲/上海
+                  value: Asia/Shanghai
+                - label:
+                    en_US: America/New_York
+                    zh_Hans: 美洲/纽约
+                  value: America/New_York
+                - label:
+                    en_US: Europe/London
+                    zh_Hans: 欧洲/伦敦
+                  value: Europe/London
+                - label:
+                    en_US: Asia/Tokyo
+                    zh_Hans: 亚洲/东京
+                  value: Asia/Tokyo
+                placeholder: null
+                precision: null
+                required: false
+                scope: null
+                template: null
+                type: select
+              settings:
+                format:
+                  value: '%Y-%m-%d %H:%M:%S'
+                timezone:
+                  value: Asia/Shanghai
+              tool_label: 获取当前时间
+              tool_name: current_time
+              type: builtin
+        agent_strategy_label: MCP FunctionCalling
+        agent_strategy_name: function_calling
+        agent_strategy_provider_name: hjlarry/agent/mcp_agent
+        desc: '深度研究智能代理，通过MCP协议连接到后端服务，提供深度研究、网页抓取和问候功能'
+        output_schema: null
+        plugin_unique_identifier: hjlarry/agent:0.0.1@f42a5a80b1c77fd0655c755b70ad08da47ceb1acc3638cf13a0eb9ed42b3a128
+        selected: true
+        title: 深度研究MCP代理
+        type: agent
+      height: 198
+      id: '1742957995972'
+      position:
+        x: 77.26818344276029
+        y: 141.49174542794128
+      positionAbsolute:
+        x: 77.26818344276029
+        y: 141.49174542794128
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        answer: '{{#1742957995972.text#}}'
+        desc: '智能回复节点，输出MCP代理的处理结果'
+        selected: false
+        title: 智能回复
+        type: answer
+        variables: []
+      height: 105
+      id: answer
+      position:
+        x: 92.65944019346313
+        y: 522.3998570370943
+      positionAbsolute:
+        x: 92.65944019346313
+        y: 522.3998570370943
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244    
+    viewport:
+      x: -1.724234777740719
+      y: 195.0933881869936
+      zoom: 0.6700068920066886
