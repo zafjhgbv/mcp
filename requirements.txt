@@ -1,0 +1,9 @@
+starlette
+uvicorn
+aiohttp
+mcp[cli]
+requests
+beautifulsoup4
+# Deep Research 功能依赖
+ddgs
+python-dotenv
