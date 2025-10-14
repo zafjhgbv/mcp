@@ -4,6 +4,13 @@ aiohttp
 mcp[cli]
 requests
 beautifulsoup4
+python-dotenv
+
 # Deep Research 功能依赖
 ddgs
-python-dotenv
+
+# Jira-Confluence-Dify 同步功能依赖
+jira==3.5.2
+atlassian-python-api==3.41.0
+sqlalchemy==2.0.23
+python-dateutil==2.8.2

@@ -5,6 +5,11 @@ This server provides multiple services including:
 1. A simple "Greeter" service with a single tool: `hello`
 2. A web content fetching service with tool: `fetch_web_content`
 3. A deep research service with tool: `deep_research`
+4. Jira-Confluence-Dify sync services with tools:
+   - `sync_all_to_dify`: 全量同步 Jira + Confluence
+   - `sync_jira_to_dify`: 仅同步 Jira Issues
+   - `sync_confluence_to_dify`: 仅同步 Confluence Pages
+   - `query_sync_records`: 查询同步历史记录
 
 It is built using the official `mcp` Python SDK and follows the patterns
 from the official documentation.
@@ -42,6 +47,44 @@ try:
     print("Environment variables loaded from .env file")
 except ImportError:
     print("python-dotenv not installed, using system environment variables only")
+
+# 导入同步模块
+import logging
+try:
+    from sync_modules import (
+        setup_database,
+        sync_all_sources,
+        sync_jira_only,
+        sync_confluence_only,
+        query_sync_history
+    )
+    SYNC_MODULES_AVAILABLE = True
+    print("Jira-Confluence-Dify sync modules loaded successfully")
+    
+    # 配置 logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("sync.log", encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    # 初始化数据库
+    try:
+        if setup_database():
+            print("Sync database initialized successfully")
+        else:
+            print("Warning: Sync database initialization failed")
+    except Exception as e:
+        print(f"Warning: Sync database initialization error: {e}")
+        SYNC_MODULES_AVAILABLE = False
+        
+except ImportError as e:
+    SYNC_MODULES_AVAILABLE = False
+    print(f"Warning: Sync modules not available: {e}")
+    print("Jira-Confluence-Dify sync tools will not be registered")
 
 # DuckDuckGo搜索库导入
 try:
@@ -902,6 +945,255 @@ async def deep_research(
             "status": "error",
             "error": error_msg
         }
+
+# ==================== Jira-Confluence-Dify 同步工具 ====================
+
+if SYNC_MODULES_AVAILABLE:
+    @mcp.tool()
+    async def sync_all_to_dify(
+        jira_project_key: Optional[str] = None,
+        jira_since: str = "-30d",
+        confluence_space_key: Optional[str] = None,
+        confluence_since_days: int = 30
+    ) -> Dict:
+        """
+        同步所有配置的数据源（Jira + Confluence）到 Dify 知识库
+        
+        这个工具会：
+        1. 从 Jira 项目拉取 Issues
+        2. 从 Confluence 空间拉取 Pages
+        3. 对每条数据进行版本控制检查（基于更新时间）
+        4. 只同步新数据或有更新的数据到 Dify
+        5. 在数据库中记录同步状态和时间
+        
+        Args:
+            jira_project_key: Jira 项目 Key（如 'PROJ'），为 None 则使用环境变量 JIRA_PROJECT_KEY
+            jira_since: Jira 数据拉取时间范围，默认 '-30d'（最近30天），支持 '-7d', '-1h' 等
+            confluence_space_key: Confluence 空间 Key（如 'TEAM'），为 None 则使用环境变量 CONFLUENCE_SPACE_KEY
+            confluence_since_days: Confluence 数据拉取天数，默认 30 天
+        
+        Returns:
+            包含同步结果的字典：
+            - status: "success" 或 "error"
+            - jira_pulled: 从 Jira 拉取的数量
+            - confluence_pulled: 从 Confluence 拉取的数量
+            - total_pulled: 总拉取数量
+            - synced: 成功同步的数量
+            - skipped: 跳过的数量（内容未变化）
+            - failed: 失败的数量
+            - details: 每条数据的详细同步结果
+            - message: 简要消息
+        
+        环境变量要求：
+            - ATLASSIAN_URL: Atlassian 域名
+            - ATLASSIAN_EMAIL: Atlassian 邮箱
+            - ATLASSIAN_API_TOKEN: Atlassian API Token
+            - JIRA_PROJECT_KEY: Jira 项目 Key（如果参数未提供）
+            - CONFLUENCE_SPACE_KEY: Confluence 空间 Key（如果参数未提供）
+            - DIFY_API_KEY: Dify API Key
+            - DIFY_API_URL: Dify API URL
+            - DIFY_DATASET_ID: Dify 知识库 ID
+        """
+        print(f"Tool 'sync_all_to_dify' called")
+        print(f"  Jira: project={jira_project_key or 'from env'}, since={jira_since}")
+        print(f"  Confluence: space={confluence_space_key or 'from env'}, since_days={confluence_since_days}")
+        
+        try:
+            result = sync_all_sources(
+                jira_project_key=jira_project_key,
+                jira_since=jira_since,
+                confluence_space_key=confluence_space_key,
+                confluence_since_days=confluence_since_days
+            )
+            
+            print(f"Sync all completed: {result.get('message')}")
+            return result
+            
+        except Exception as e:
+            error_msg = f"全量同步失败: {str(e)}"
+            print(f"Sync all error: {error_msg}")
+            logging.error(error_msg, exc_info=True)
+            return {
+                "status": "error",
+                "error": error_msg
+            }
+
+    @mcp.tool()
+    async def sync_jira_to_dify(
+        project_key: Optional[str] = None,
+        since: str = "-30d",
+        max_results: int = 100
+    ) -> Dict:
+        """
+        仅同步 Jira Issues 到 Dify 知识库
+        
+        这个工具会：
+        1. 从指定 Jira 项目拉取 Issues
+        2. 对每个 Issue 进行版本控制检查
+        3. 只同步新 Issue 或有更新的 Issue
+        4. 记录同步状态到数据库
+        
+        Args:
+            project_key: Jira 项目 Key（如 'PROJ'），为 None 则使用环境变量 JIRA_PROJECT_KEY
+            since: 拉取时间范围，默认 '-30d'，支持 '-7d', '-1h', '-2w' 等格式
+            max_results: 最大拉取数量，默认 100
+        
+        Returns:
+            包含同步结果的字典：
+            - status: "success" 或 "error"
+            - pulled: 从 Jira 拉取的数量
+            - synced: 成功同步的数量
+            - skipped: 跳过的数量
+            - failed: 失败的数量
+            - issues: 每个 Issue 的详细同步结果列表
+            - message: 简要消息
+        
+        环境变量要求：
+            - ATLASSIAN_URL, ATLASSIAN_EMAIL, ATLASSIAN_API_TOKEN
+            - JIRA_PROJECT_KEY（如果参数未提供）
+            - DIFY_API_KEY, DIFY_API_URL, DIFY_DATASET_ID
+        """
+        print(f"Tool 'sync_jira_to_dify' called")
+        print(f"  project_key={project_key or 'from env'}, since={since}, max_results={max_results}")
+        
+        try:
+            result = sync_jira_only(
+                project_key=project_key,
+                since=since,
+                max_results=max_results
+            )
+            
+            print(f"Jira sync completed: {result.get('message')}")
+            return result
+            
+        except Exception as e:
+            error_msg = f"Jira 同步失败: {str(e)}"
+            print(f"Jira sync error: {error_msg}")
+            logging.error(error_msg, exc_info=True)
+            return {
+                "status": "error",
+                "error": error_msg
+            }
+
+    @mcp.tool()
+    async def sync_confluence_to_dify(
+        space_key: Optional[str] = None,
+        since_days: int = 30,
+        max_results: int = 100
+    ) -> Dict:
+        """
+        仅同步 Confluence Pages 到 Dify 知识库
+        
+        这个工具会：
+        1. 从指定 Confluence 空间拉取 Pages
+        2. 对每个 Page 进行版本控制检查
+        3. 只同步新 Page 或有更新的 Page
+        4. 记录同步状态到数据库
+        
+        Args:
+            space_key: Confluence 空间 Key（如 'TEAM'），为 None 则使用环境变量 CONFLUENCE_SPACE_KEY
+            since_days: 拉取最近 N 天的页面，默认 30 天
+            max_results: 最大拉取数量，默认 100
+        
+        Returns:
+            包含同步结果的字典：
+            - status: "success" 或 "error"
+            - pulled: 从 Confluence 拉取的数量
+            - synced: 成功同步的数量
+            - skipped: 跳过的数量
+            - failed: 失败的数量
+            - pages: 每个 Page 的详细同步结果列表
+            - message: 简要消息
+        
+        环境变量要求：
+            - ATLASSIAN_URL, ATLASSIAN_EMAIL, ATLASSIAN_API_TOKEN
+            - CONFLUENCE_SPACE_KEY（如果参数未提供）
+            - DIFY_API_KEY, DIFY_API_URL, DIFY_DATASET_ID
+        """
+        print(f"Tool 'sync_confluence_to_dify' called")
+        print(f"  space_key={space_key or 'from env'}, since_days={since_days}, max_results={max_results}")
+        
+        try:
+            result = sync_confluence_only(
+                space_key=space_key,
+                since_days=since_days,
+                max_results=max_results
+            )
+            
+            print(f"Confluence sync completed: {result.get('message')}")
+            return result
+            
+        except Exception as e:
+            error_msg = f"Confluence 同步失败: {str(e)}"
+            print(f"Confluence sync error: {error_msg}")
+            logging.error(error_msg, exc_info=True)
+            return {
+                "status": "error",
+                "error": error_msg
+            }
+
+    @mcp.tool()
+    async def query_sync_records(
+        source_type: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 50
+    ) -> Dict:
+        """
+        查询同步历史记录
+        
+        这个工具可以查询数据库中的同步历史，用于：
+        1. 查看哪些数据已经同步过
+        2. 检查同步状态（成功/失败）
+        3. 查看同步时间和 Dify 文档 ID
+        4. 调试同步问题
+        
+        Args:
+            source_type: 筛选数据源类型，可选 'JIRA' 或 'CONFLUENCE'，为 None 表示查询全部
+            status: 筛选同步状态，可选 'SUCCESS' 或 'FAILED'，为 None 表示查询全部
+            limit: 返回记录数量限制，默认 50 条
+        
+        Returns:
+            包含查询结果的字典：
+            - status: "success" 或 "error"
+            - total_records: 数据库中符合条件的总记录数
+            - returned: 本次返回的记录数
+            - records: 记录列表，每条记录包含：
+              - source_id: 数据源 ID（Jira Key 或 Confluence Page ID）
+              - source_type: 数据源类型（JIRA/CONFLUENCE）
+              - last_synced_update_time: 最后同步的远程更新时间
+              - dify_document_id: Dify 文档 ID
+              - last_sync_status: 最后同步状态（SUCCESS/FAILED）
+              - last_synced_at: 最后同步时间
+            - message: 简要消息
+        
+        示例：
+            - 查询所有 Jira 同步记录：source_type='JIRA'
+            - 查询所有失败的记录：status='FAILED'
+            - 查询 Confluence 的成功记录：source_type='CONFLUENCE', status='SUCCESS'
+        """
+        print(f"Tool 'query_sync_records' called")
+        print(f"  source_type={source_type}, status={status}, limit={limit}")
+        
+        try:
+            result = query_sync_history(
+                source_type=source_type,
+                status=status,
+                limit=limit
+            )
+            
+            print(f"Query completed: {result.get('message')}")
+            return result
+            
+        except Exception as e:
+            error_msg = f"查询同步记录失败: {str(e)}"
+            print(f"Query error: {error_msg}")
+            logging.error(error_msg, exc_info=True)
+            return {
+                "status": "error",
+                "error": error_msg
+            }
+
+# ==================== End of Sync Tools ====================
 
 # 2. Set up the SSE transport
 transport = SseServerTransport("/messages/")
