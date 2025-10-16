@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-server
+    ports:
+      - "8000:8000"
+    environment:
+      # AI模型配置
+      - DeepSearchModel=${DeepSearchModel:-gpt-4o}
+      - SearchEngine=${SearchEngine:-duckduckgo}
+      - MaxSearchList=${MaxSearchList:-8}
+      
+      # OpenAI API配置
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      
+      # 文件存储配置
+      - REPORT_SAVE_PATH=${REPORT_SAVE_PATH:-file/document}
+      
+      # 性能和超时配置
+      - AI_MODEL_TIMEOUT=${AI_MODEL_TIMEOUT:-60}
+      - SEARCH_API_TIMEOUT=${SEARCH_API_TIMEOUT:-30}
+      - MAX_TOKENS=${MAX_TOKENS:-4000}
+      
+      # 日志配置
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VERBOSE_LOGGING=${VERBOSE_LOGGING:-true}
+      
+      # MCP服务器配置
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8000
+    volumes:
+      # 挂载报告保存目录到宿主机
+      - ./file:/app/file
+      # 如果需要自定义配置，可以挂载.env文件
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/sse/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # 负载均衡集群模式（可选）
+  mcp-cluster:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-cluster
+    ports:
+      - "8000:8000"  # 负载均衡器监听端口
+    environment:
+      - DeepSearchModel=${DeepSearchModel:-gpt-4o}
+      - SearchEngine=${SearchEngine:-duckduckgo}
+      - MaxSearchList=${MaxSearchList:-8}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - REPORT_SAVE_PATH=${REPORT_SAVE_PATH:-file/document}
+      - AI_MODEL_TIMEOUT=${AI_MODEL_TIMEOUT:-60}
+      - SEARCH_API_TIMEOUT=${SEARCH_API_TIMEOUT:-30}
+      - MAX_TOKENS=${MAX_TOKENS:-4000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VERBOSE_LOGGING=${VERBOSE_LOGGING:-true}
+    volumes:
+      - ./file:/app/file
+      - ./.env:/app/.env:ro
+    command: python run_cluster.py
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    profiles:
+      - cluster
+
+networks:
+  mcp-network:
+    driver: bridge
